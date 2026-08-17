@@ -95,6 +95,7 @@ class RecipeWriteSerializer(serializers.ModelSerializer):
         recipe.tags.set(tags)
         for ingredient in ingredients:
             IngredientRecipe.objects.create(recipe=recipe, ingredient=ingredient['id'], amount=ingredient['amount'])
+        return recipe
 
     def update(self, instance, validated_data):
         ingredients = validated_data.pop('ingredients', [])
@@ -109,7 +110,7 @@ class RecipeWriteSerializer(serializers.ModelSerializer):
 
         instance.ingredientrecipe_set.all().delete()
         for ingredient in ingredients:
-            IngredientRecipe.objects.create(ingredient)
+            IngredientRecipe.objects.create(recipe=instance, ingredient=ingredient['id'], amount=ingredient['amount'])
 
         instance.save()
         return instance
