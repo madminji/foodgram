@@ -27,6 +27,8 @@ class User(AbstractUser):
         verbose_name='username',
     )
 
+    avatar = models.ImageField(upload_to='users/', null=True, blank=True)
+
     USERNAME_FIELD = 'email'
     REQUIRED_FIELDS = ['username', 'first_name', 'last_name']
 
@@ -77,7 +79,7 @@ class Ingredient(models.Model):
         max_length=MAX_NAME_LENGTH,
         verbose_name='Ингредиент'
     )
-    measure_unit = models.CharField(
+    measurement_unit = models.CharField(
         max_length=MAX_NAME_LENGTH,
         verbose_name='Единица измерения'
     )
@@ -89,15 +91,15 @@ class Recipe(models.Model):
         on_delete=models.CASCADE,
         verbose_name='Автор'
     )
-    title = models.CharField(
+    name = models.CharField(
         max_length=MAX_NAME_LENGTH,
         verbose_name='Название'
     )
-    picture = models.ImageField(
+    image = models.ImageField(
         upload_to='recipes/',
         verbose_name='Картинка'
     )
-    description = models.TextField(verbose_name='Описание')
+    text = models.TextField(verbose_name='Описание')
     ingredients = models.ManyToManyField(
         Ingredient,
         through='IngredientRecipe',
