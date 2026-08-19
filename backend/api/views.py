@@ -4,7 +4,12 @@ from rest_framework.response import Response
 from recipes.models import Tag, Ingredient, Recipe
 from .filters import IngredientSearchFilter
 from .permissions import IsAuthorAdminOrReadOnly
-from .serializers import TagSerializer, IngredientSerializer, RecipeReadSerializer, RecipeWriteSerializer
+from .serializers import (
+    TagSerializer,
+    IngredientSerializer,
+    RecipeReadSerializer,
+    RecipeWriteSerializer
+)
 
 
 class TagViewSet(viewsets.ReadOnlyModelViewSet):
@@ -42,7 +47,11 @@ class RecipeViewSet(viewsets.ModelViewSet):
     def update(self, request, *args, **kwargs):
         partial = kwargs.pop('partial', False)
         instance = self.get_object()
-        serializer = self.get_serializer(instance, data=request.data, partial=partial)
+        serializer = self.get_serializer(
+            instance,
+            data=request.data,
+            partial=partial
+        )
         serializer.is_valid(raise_exception=True)
         recipe = serializer.save()
         return Response(
