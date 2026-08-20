@@ -1,14 +1,17 @@
+from django.shortcuts import get_object_or_404
 from rest_framework import viewsets, status
+from rest_framework.decorators import action
 from rest_framework.response import Response
 
-from recipes.models import Tag, Ingredient, Recipe
+from recipes.models import Tag, Ingredient, Recipe, Favorite
 from .filters import IngredientSearchFilter
 from .permissions import IsAuthorAdminOrReadOnly
 from .serializers import (
     TagSerializer,
     IngredientSerializer,
     RecipeReadSerializer,
-    RecipeWriteSerializer
+    RecipeWriteSerializer,
+    RecipeFavoriteSerializer
 )
 
 
@@ -58,3 +61,17 @@ class RecipeViewSet(viewsets.ModelViewSet):
             RecipeReadSerializer(recipe, context={'request': request}).data,
             status=status.HTTP_200_OK
         )
+
+
+@action(detail=True, methods=['post', 'delete'])
+def favorite(request, pk=None):
+    recipe = get_object_or_404(Recipe, pk=pk)
+
+    if request.method == 'POST':
+        if Favorite.objects.filter(user=request.user, recipe=recipe).exists():
+            return Response(status=status.HTTP_400_BAD_REQUEST)
+        favorite_recipe = Favorite.objects.create(user=request.user, recipe=recipe)
+        return Response(RecipeFavoriteSerializer(favorite_recipe), status=status.HTTP_201_CREATED)
+    elif request.method == 'DELETE':
+        Favorite.objects.filter(recipe=recipe).delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
