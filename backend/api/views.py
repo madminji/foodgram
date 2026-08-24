@@ -1,9 +1,21 @@
+from django.http import HttpResponse
 from django.shortcuts import get_object_or_404
+from django.db.models import Sum
+from djoser.views import UserViewSet as DjoserUserViewSet
 from rest_framework import viewsets, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
-from recipes.models import Tag, Ingredient, Recipe, Favorite
+from recipes.models import (
+    Tag,
+    Ingredient,
+    Recipe,
+    Favorite,
+    ShoppingList,
+    IngredientRecipe,
+    Follow,
+    User
+)
 from .filters import IngredientSearchFilter
 from .permissions import IsAuthorAdminOrReadOnly
 from .serializers import (
@@ -11,7 +23,8 @@ from .serializers import (
     IngredientSerializer,
     RecipeReadSerializer,
     RecipeWriteSerializer,
-    RecipeFavoriteSerializer
+    RecipeShortSerializer,
+    UserWithRecipesSerializer
 )
 
 
@@ -62,16 +75,106 @@ class RecipeViewSet(viewsets.ModelViewSet):
             status=status.HTTP_200_OK
         )
 
+    @action(detail=True, methods=['post', 'delete'])
+    def favorite(self, request, pk=None):
+        recipe = get_object_or_404(Recipe, pk=pk)
 
-@action(detail=True, methods=['post', 'delete'])
-def favorite(request, pk=None):
-    recipe = get_object_or_404(Recipe, pk=pk)
+        if request.method == 'POST':
+            if Favorite.objects.filter(
+                    user=request.user,
+                    recipe=recipe
+            ).exists():
+                return Response(status=status.HTTP_400_BAD_REQUEST)
+            Favorite.objects.create(user=request.user, recipe=recipe)
+            return Response(
+                RecipeShortSerializer(recipe).data,
+                status=status.HTTP_201_CREATED
+            )
+        elif request.method == 'DELETE':
+            Favorite.objects.filter(user=request.user, recipe=recipe).delete()
+            return Response(status=status.HTTP_204_NO_CONTENT)
 
-    if request.method == 'POST':
-        if Favorite.objects.filter(user=request.user, recipe=recipe).exists():
-            return Response(status=status.HTTP_400_BAD_REQUEST)
-        favorite_recipe = Favorite.objects.create(user=request.user, recipe=recipe)
-        return Response(RecipeFavoriteSerializer(favorite_recipe), status=status.HTTP_201_CREATED)
-    elif request.method == 'DELETE':
-        Favorite.objects.filter(recipe=recipe).delete()
-        return Response(status=status.HTTP_204_NO_CONTENT)
+    @action(detail=True, methods=['post', 'delete'])
+    def shopping_cart(self, request, pk=None):
+        recipe = get_object_or_404(Recipe, pk=pk)
+
+        if request.method == 'POST':
+            if ShoppingList.objects.filter(
+                    user=request.user,
+                    recipe=recipe
+            ).exists():
+                return Response(status=status.HTTP_400_BAD_REQUEST)
+            ShoppingList.objects.create(user=request.user, recipe=recipe)
+            return Response(
+                RecipeShortSerializer(recipe).data,
+                status=status.HTTP_201_CREATED
+            )
+        elif request.method == 'DELETE':
+            ShoppingList.objects.filter(
+                user=request.user,
+                recipe=recipe
+            ).delete()
+            return Response(status=status.HTTP_204_NO_CONTENT)
+
+    @action(detail=False, methods=['get'])
+    def download_shopping_cart(self, request, pk=None):
+        ingredients = IngredientRecipe.objects.filter(
+            recipe__shopping_list__user=request.user
+        ).values(
+            'ingredient__name',
+            'ingredient__measurement_unit'
+        ).annotate(
+            total=Sum('amount')
+        )
+
+        content = ''
+        for item in ingredients:
+            name = item['ingredient__name']
+            total = item['total']
+            unit = item['ingredient__measurement_unit']
+
+            content += f"{name} — {total} ({unit})\n"
+
+        response = HttpResponse(content, content_type='text/plain')
+        response['Content-Disposition'] = (
+            "attachment; filename='shopping_cart.txt'"
+        )
+        return response
+
+
+class UserViewSet(DjoserUserViewSet):
+    @action(detail=True, methods=['post', 'delete'])
+    def subscribe(self, request, pk=None):
+        following_user = get_object_or_404(User, pk=pk)
+
+        if request.method == 'POST':
+            if Follow.objects.filter(
+                    user=request.user,
+                    following=following_user
+            ).exists():
+                return Response(status=status.HTTP_400_BAD_REQUEST)
+            Follow.objects.create(user=request.user, following=following_user)
+            return Response(
+                UserWithRecipesSerializer(
+                    following_user,
+                    context={'request': request}
+                ).data,
+                status=status.HTTP_201_CREATED
+            )
+        elif request.method == 'DELETE':
+            Follow.objects.filter(
+                user=request.user,
+                following=following_user
+            ).delete()
+            return Response(status=status.HTTP_204_NO_CONTENT)
+
+    @action(detail=False, methods=['get'])
+    def subscriptions(self, request, pk=None):
+        following_users = User.objects.filter(followers__user=request.user)
+        return Response(
+            UserWithRecipesSerializer(
+                following_users,
+                many=True,
+                context={'request': request}
+            ).data,
+            status=status.HTTP_200_OK)
