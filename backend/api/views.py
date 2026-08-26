@@ -4,6 +4,8 @@ from django.db.models import Sum
 from djoser.views import UserViewSet as DjoserUserViewSet
 from rest_framework import viewsets, status
 from rest_framework.decorators import action
+from rest_framework.permissions import IsAuthenticated
+from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework.response import Response
 from rest_framework.exceptions import NotAuthenticated
 
@@ -17,7 +19,7 @@ from recipes.models import (
     Follow,
     User
 )
-from .filters import IngredientSearchFilter
+from .filters import IngredientSearchFilter, RecipeFilter
 from .permissions import IsAuthorAdminOrReadOnly
 from .serializers import (
     TagSerializer,
@@ -47,6 +49,8 @@ class IngredientViewSet(viewsets.ReadOnlyModelViewSet):
 class RecipeViewSet(viewsets.ModelViewSet):
     queryset = Recipe.objects.all()
     permission_classes = (IsAuthorAdminOrReadOnly,)
+    filter_backends = (DjangoFilterBackend,)
+    filterset_class = RecipeFilter
 
     def get_serializer_class(self):
         if self.request.method in ('POST', 'PATCH', 'PUT'):
@@ -93,6 +97,11 @@ class RecipeViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_201_CREATED
             )
         elif request.method == 'DELETE':
+            if not Favorite.objects.filter(
+                    user=request.user,
+                    recipe=recipe
+            ).exists():
+                return Response(status=status.HTTP_400_BAD_REQUEST)
             Favorite.objects.filter(user=request.user, recipe=recipe).delete()
             return Response(status=status.HTTP_204_NO_CONTENT)
 
@@ -112,6 +121,11 @@ class RecipeViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_201_CREATED
             )
         elif request.method == 'DELETE':
+            if not ShoppingList.objects.filter(
+                    user=request.user,
+                    recipe=recipe
+            ).exists():
+                return Response(status=status.HTTP_400_BAD_REQUEST)
             ShoppingList.objects.filter(
                 user=request.user,
                 recipe=recipe
@@ -145,6 +159,16 @@ class RecipeViewSet(viewsets.ModelViewSet):
         )
         return response
 
+    @action(detail=True, methods=['get'], url_path='get-link')
+    def get_link(self, request, pk=None):
+        recipe = get_object_or_404(Recipe, pk=pk)
+        return Response({
+            'short-link': request.build_absolute_uri(
+                f'/s/{recipe.short_link}/'
+            )
+        }
+        )
+
 
 class UserViewSet(DjoserUserViewSet):
     queryset = User.objects.all()
@@ -160,10 +184,16 @@ class UserViewSet(DjoserUserViewSet):
 
     @action(detail=True, methods=['post', 'delete'])
     def subscribe(self, request, **kwargs):
+        if not request.user.is_authenticated:
+            raise NotAuthenticated()
+
         pk = kwargs.get('id')
         following_user = get_object_or_404(User, pk=pk)
 
         if request.method == 'POST':
+            if request.user == following_user:
+                return Response(status=status.HTTP_400_BAD_REQUEST)
+
             if Follow.objects.filter(
                     user=request.user,
                     following=following_user
@@ -178,6 +208,11 @@ class UserViewSet(DjoserUserViewSet):
                 status=status.HTTP_201_CREATED
             )
         elif request.method == 'DELETE':
+            if not Follow.objects.filter(
+                    user=request.user,
+                    following=following_user
+            ).exists():
+                return Response(status=status.HTTP_400_BAD_REQUEST)
             Follow.objects.filter(
                 user=request.user,
                 following=following_user
@@ -189,22 +224,38 @@ class UserViewSet(DjoserUserViewSet):
         if not request.user.is_authenticated:
             raise NotAuthenticated()
         following_users = User.objects.filter(followers__user=request.user)
-        return Response(
-            UserWithRecipesSerializer(
-                following_users,
+
+        page = self.paginate_queryset(following_users)
+
+        if page is not None:
+            serializer = UserWithRecipesSerializer(
+                page,
                 many=True,
                 context={'request': request}
-            ).data,
-            status=status.HTTP_200_OK)
+            )
+            return self.get_paginated_response(serializer.data)
+
+        serializer = UserWithRecipesSerializer(
+            following_users,
+            many=True,
+            context={'request': request}
+        )
+
+        return Response(serializer.data)
 
     @action(detail=False, methods=['put', 'delete'], url_path='me/avatar')
     def avatar(self, request):
         if not request.user.is_authenticated:
             raise NotAuthenticated()
         if request.method == 'PUT':
-            avatar = request.data['avatar']
-            avatar_url = Base64ImageField().to_internal_value(avatar)
-            request.user.avatar = avatar_url
+            avatar = request.data.get('avatar')
+            if avatar is None:
+                return Response(
+                    {'avatar': ['Это поле обязательно.']},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            avatar_file = Base64ImageField().to_internal_value(avatar)
+            request.user.avatar = avatar_file
             request.user.save()
             content = {'avatar': request.build_absolute_uri(request.user.avatar.url)}
             return Response(content, status=status.HTTP_200_OK)

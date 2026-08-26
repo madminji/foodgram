@@ -15,7 +15,13 @@ from recipes.models import (
 from django.core.files.base import ContentFile
 from djoser.serializers import UserCreateSerializer as DjoserUserCreateSerializer
 
-from .validators import validate_username_not_me, USERNAME_REGEX
+from .validators import (
+    validate_username_not_me,
+    USERNAME_REGEX,
+    validate_unique_ingredients,
+    validate_unique_tags,
+)
+
 
 class Base64ImageField(serializers.ImageField):
     def to_internal_value(self, data):
@@ -59,6 +65,7 @@ class RecipeShortSerializer(serializers.ModelSerializer):
         model = Recipe
         fields = ('id', 'name', 'image', 'cooking_time')
 
+
 class UserCreateSerializer(DjoserUserCreateSerializer):
     username = serializers.RegexField(
         regex=USERNAME_REGEX,
@@ -69,7 +76,6 @@ class UserCreateSerializer(DjoserUserCreateSerializer):
     class Meta:
         model = User
         fields = ('email', 'id', 'username', 'first_name', 'last_name', 'password')
-
 
 
 class UserSerializer(serializers.ModelSerializer):
@@ -96,7 +102,7 @@ class UserSerializer(serializers.ModelSerializer):
 
 
 class UserWithRecipesSerializer(UserSerializer):
-    recipes = RecipeShortSerializer(many=True, read_only=True)
+    recipes = serializers.SerializerMethodField()
     recipes_count = serializers.SerializerMethodField()
 
     class Meta:
@@ -106,8 +112,25 @@ class UserWithRecipesSerializer(UserSerializer):
             'is_subscribed', 'avatar', 'recipes', 'recipes_count'
         )
 
+    def get_recipes(self, obj):
+        recipes = obj.recipes.all()
+        request = self.context.get('request')
+
+        if request:
+            recipes_limit = request.query_params.get('recipes_limit')
+
+            if recipes_limit:
+                recipes = recipes[:int(recipes_limit)]
+
+        return RecipeShortSerializer(
+            recipes,
+            many=True,
+            context=self.context,
+        ).data
+
     def get_recipes_count(self, obj):
         return Recipe.objects.filter(author=obj).count()
+
 
 
 class RecipeReadSerializer(serializers.ModelSerializer):
@@ -150,10 +173,15 @@ class RecipeReadSerializer(serializers.ModelSerializer):
 
 
 class RecipeWriteSerializer(serializers.ModelSerializer):
-    ingredients = IngredientWriteSerializer(many=True)
+    ingredients = IngredientWriteSerializer(
+        many=True,
+        allow_empty=False,
+    )
     tags = serializers.PrimaryKeyRelatedField(
         queryset=Tag.objects.all(),
-        many=True
+        many=True,
+        required=True,
+        allow_empty=False,
     )
     image = Base64ImageField()
 
@@ -167,6 +195,26 @@ class RecipeWriteSerializer(serializers.ModelSerializer):
             'text',
             'cooking_time'
         )
+
+    def validate(self, data):
+        if self.instance:
+            if 'ingredients' not in self.initial_data:
+                raise serializers.ValidationError({
+                    'ingredients': 'Это поле обязательно.'
+                })
+
+            if 'tags' not in self.initial_data:
+                raise serializers.ValidationError({
+                    'tags': 'Это поле обязательно.'
+                })
+
+        if 'ingredients' in data:
+            validate_unique_ingredients(data['ingredients'])
+
+        if 'tags' in data:
+            validate_unique_tags(data['tags'])
+
+        return data
 
     def create(self, validated_data):
         ingredients = validated_data.pop('ingredients')
