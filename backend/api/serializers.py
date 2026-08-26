@@ -1,4 +1,6 @@
 from rest_framework import serializers
+from django.conf import settings
+
 import base64
 from recipes.models import (
     Tag,
@@ -11,7 +13,9 @@ from recipes.models import (
     ShoppingList
 )
 from django.core.files.base import ContentFile
+from djoser.serializers import UserCreateSerializer as DjoserUserCreateSerializer
 
+from .validators import validate_username_not_me, USERNAME_REGEX
 
 class Base64ImageField(serializers.ImageField):
     def to_internal_value(self, data):
@@ -54,6 +58,18 @@ class RecipeShortSerializer(serializers.ModelSerializer):
     class Meta:
         model = Recipe
         fields = ('id', 'name', 'image', 'cooking_time')
+
+class UserCreateSerializer(DjoserUserCreateSerializer):
+    username = serializers.RegexField(
+        regex=USERNAME_REGEX,
+        max_length=settings.USERNAME_MAX_LENGTH,
+        validators=(validate_username_not_me,),
+    )
+
+    class Meta:
+        model = User
+        fields = ('email', 'id', 'username', 'first_name', 'last_name', 'password')
+
 
 
 class UserSerializer(serializers.ModelSerializer):

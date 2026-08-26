@@ -5,6 +5,7 @@ from djoser.views import UserViewSet as DjoserUserViewSet
 from rest_framework import viewsets, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
+from rest_framework.exceptions import NotAuthenticated
 
 from recipes.models import (
     Tag,
@@ -24,7 +25,8 @@ from .serializers import (
     RecipeReadSerializer,
     RecipeWriteSerializer,
     RecipeShortSerializer,
-    UserWithRecipesSerializer
+    UserWithRecipesSerializer,
+    Base64ImageField
 )
 
 
@@ -118,6 +120,8 @@ class RecipeViewSet(viewsets.ModelViewSet):
 
     @action(detail=False, methods=['get'])
     def download_shopping_cart(self, request, pk=None):
+        if not request.user.is_authenticated:
+            raise NotAuthenticated()
         ingredients = IngredientRecipe.objects.filter(
             recipe__shopping_list__user=request.user
         ).values(
@@ -143,8 +147,20 @@ class RecipeViewSet(viewsets.ModelViewSet):
 
 
 class UserViewSet(DjoserUserViewSet):
+    queryset = User.objects.all()
+
+    def get_queryset(self):
+        return User.objects.all()
+
+    @action(detail=False, methods=['get', 'put', 'patch'])
+    def me(self, request, *args, **kwargs):
+        if not request.user.is_authenticated:
+            raise NotAuthenticated()
+        return super().me(request, *args, **kwargs)
+
     @action(detail=True, methods=['post', 'delete'])
-    def subscribe(self, request, pk=None):
+    def subscribe(self, request, **kwargs):
+        pk = kwargs.get('id')
         following_user = get_object_or_404(User, pk=pk)
 
         if request.method == 'POST':
@@ -170,6 +186,8 @@ class UserViewSet(DjoserUserViewSet):
 
     @action(detail=False, methods=['get'])
     def subscriptions(self, request, pk=None):
+        if not request.user.is_authenticated:
+            raise NotAuthenticated()
         following_users = User.objects.filter(followers__user=request.user)
         return Response(
             UserWithRecipesSerializer(
@@ -178,3 +196,20 @@ class UserViewSet(DjoserUserViewSet):
                 context={'request': request}
             ).data,
             status=status.HTTP_200_OK)
+
+    @action(detail=False, methods=['put', 'delete'], url_path='me/avatar')
+    def avatar(self, request):
+        if not request.user.is_authenticated:
+            raise NotAuthenticated()
+        if request.method == 'PUT':
+            avatar = request.data['avatar']
+            avatar_url = Base64ImageField().to_internal_value(avatar)
+            request.user.avatar = avatar_url
+            request.user.save()
+            content = {'avatar': request.build_absolute_uri(request.user.avatar.url)}
+            return Response(content, status=status.HTTP_200_OK)
+        elif request.method == 'DELETE':
+            request.user.avatar.delete(save=False)
+            request.user.avatar = None
+            request.user.save()
+            return Response(status=status.HTTP_204_NO_CONTENT)
