@@ -1,25 +1,27 @@
-from rest_framework import serializers
-from django.conf import settings
-
 import base64
-from recipes.models import (
-    Tag,
-    Ingredient,
-    Recipe,
-    User,
-    Follow,
-    IngredientRecipe,
-    Favorite,
-    ShoppingList
-)
+
+from django.conf import settings
 from django.core.files.base import ContentFile
-from djoser.serializers import UserCreateSerializer as DjoserUserCreateSerializer
+from djoser.serializers import \
+    UserCreateSerializer as DjoserUserCreateSerializer
+from rest_framework import serializers
+
+from recipes.models import (
+    Favorite,
+    Follow,
+    Ingredient,
+    IngredientRecipe,
+    Recipe,
+    ShoppingList,
+    Tag,
+    User
+)
 
 from .validators import (
-    validate_username_not_me,
     USERNAME_REGEX,
     validate_unique_ingredients,
     validate_unique_tags,
+    validate_username_not_me
 )
 
 
@@ -75,7 +77,14 @@ class UserCreateSerializer(DjoserUserCreateSerializer):
 
     class Meta:
         model = User
-        fields = ('email', 'id', 'username', 'first_name', 'last_name', 'password')
+        fields = (
+            'email',
+            'id',
+            'username',
+            'first_name',
+            'last_name',
+            'password'
+        )
 
 
 class UserSerializer(serializers.ModelSerializer):
@@ -130,7 +139,6 @@ class UserWithRecipesSerializer(UserSerializer):
 
     def get_recipes_count(self, obj):
         return Recipe.objects.filter(author=obj).count()
-
 
 
 class RecipeReadSerializer(serializers.ModelSerializer):

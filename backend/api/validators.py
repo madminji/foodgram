@@ -13,6 +13,7 @@ def validate_username_not_me(value):
 
     return value
 
+
 def validate_unique_ingredients(ingredients):
     ingredient_ids = [item['id'].id for item in ingredients]
 
@@ -22,6 +23,7 @@ def validate_unique_ingredients(ingredients):
         )
 
     return ingredients
+
 
 def validate_unique_tags(tags):
     tag_ids = [tag.id for tag in tags]

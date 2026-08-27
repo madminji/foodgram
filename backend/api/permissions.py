@@ -1,22 +1,10 @@
-from rest_framework.permissions import (
-    BasePermission, IsAdminUser, SAFE_METHODS
-)
-
-
-class IsAdminOrReadOnly(IsAdminUser):
-    """Чтение доступно всем, изменение — только администратору."""
-
-    def has_permission(self, request, view):
-        return (
-            request.method in SAFE_METHODS
-            or super().has_permission(request, view)
-        )
+from rest_framework.permissions import SAFE_METHODS, BasePermission
 
 
 class IsAuthorAdminOrReadOnly(BasePermission):
     """
     Чтение доступно всем.
-    Изменение/удаление — автору, модератору или администратору.
+    Изменение/удаление — автору или администратору.
     """
 
     def has_permission(self, request, view):

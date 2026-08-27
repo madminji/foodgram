@@ -1,34 +1,34 @@
+from django.db.models import Sum
 from django.http import HttpResponse
 from django.shortcuts import get_object_or_404
-from django.db.models import Sum
+from django_filters.rest_framework import DjangoFilterBackend
 from djoser.views import UserViewSet as DjoserUserViewSet
-from rest_framework import viewsets, status
+from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
-from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework.response import Response
-from rest_framework.exceptions import NotAuthenticated
 
 from recipes.models import (
-    Tag,
-    Ingredient,
-    Recipe,
     Favorite,
-    ShoppingList,
-    IngredientRecipe,
     Follow,
+    Ingredient,
+    IngredientRecipe,
+    Recipe,
+    ShoppingList,
+    Tag,
     User
 )
+from .exceptions import BadRequestError
 from .filters import IngredientSearchFilter, RecipeFilter
 from .permissions import IsAuthorAdminOrReadOnly
 from .serializers import (
-    TagSerializer,
+    Base64ImageField,
     IngredientSerializer,
     RecipeReadSerializer,
-    RecipeWriteSerializer,
     RecipeShortSerializer,
-    UserWithRecipesSerializer,
-    Base64ImageField
+    RecipeWriteSerializer,
+    TagSerializer,
+    UserWithRecipesSerializer
 )
 
 
@@ -81,61 +81,67 @@ class RecipeViewSet(viewsets.ModelViewSet):
             status=status.HTTP_200_OK
         )
 
-    @action(detail=True, methods=['post', 'delete'])
+    @action(
+        detail=True,
+        methods=['post', 'delete'],
+        permission_classes=(IsAuthenticated,)
+    )
     def favorite(self, request, pk=None):
         recipe = get_object_or_404(Recipe, pk=pk)
+        is_favorite_exists = Favorite.objects.filter(
+            user=request.user,
+            recipe=recipe
+        ).exists()
 
         if request.method == 'POST':
-            if Favorite.objects.filter(
-                    user=request.user,
-                    recipe=recipe
-            ).exists():
-                return Response(status=status.HTTP_400_BAD_REQUEST)
+            if is_favorite_exists:
+                raise BadRequestError('Рецепт уже добавлен в избранное.')
             Favorite.objects.create(user=request.user, recipe=recipe)
             return Response(
                 RecipeShortSerializer(recipe).data,
                 status=status.HTTP_201_CREATED
             )
         elif request.method == 'DELETE':
-            if not Favorite.objects.filter(
-                    user=request.user,
-                    recipe=recipe
-            ).exists():
-                return Response(status=status.HTTP_400_BAD_REQUEST)
+            if not is_favorite_exists:
+                raise BadRequestError('Рецепта нет в избранном.')
             Favorite.objects.filter(user=request.user, recipe=recipe).delete()
             return Response(status=status.HTTP_204_NO_CONTENT)
 
-    @action(detail=True, methods=['post', 'delete'])
+    @action(
+        detail=True,
+        methods=['post', 'delete'],
+        permission_classes=(IsAuthenticated,)
+    )
     def shopping_cart(self, request, pk=None):
         recipe = get_object_or_404(Recipe, pk=pk)
+        is_shopping_cart_exists = ShoppingList.objects.filter(
+            user=request.user,
+            recipe=recipe
+        ).exists()
 
         if request.method == 'POST':
-            if ShoppingList.objects.filter(
-                    user=request.user,
-                    recipe=recipe
-            ).exists():
-                return Response(status=status.HTTP_400_BAD_REQUEST)
+            if is_shopping_cart_exists:
+                raise BadRequestError('Рецепт уже добавлен в список покупок.')
             ShoppingList.objects.create(user=request.user, recipe=recipe)
             return Response(
                 RecipeShortSerializer(recipe).data,
                 status=status.HTTP_201_CREATED
             )
         elif request.method == 'DELETE':
-            if not ShoppingList.objects.filter(
-                    user=request.user,
-                    recipe=recipe
-            ).exists():
-                return Response(status=status.HTTP_400_BAD_REQUEST)
+            if not is_shopping_cart_exists:
+                raise BadRequestError('Рецепта нет в списке покупок.')
             ShoppingList.objects.filter(
                 user=request.user,
                 recipe=recipe
             ).delete()
             return Response(status=status.HTTP_204_NO_CONTENT)
 
-    @action(detail=False, methods=['get'])
+    @action(
+        detail=False,
+        methods=['get'],
+        permission_classes=(IsAuthenticated,)
+    )
     def download_shopping_cart(self, request, pk=None):
-        if not request.user.is_authenticated:
-            raise NotAuthenticated()
         ingredients = IngredientRecipe.objects.filter(
             recipe__shopping_list__user=request.user
         ).values(
@@ -173,32 +179,40 @@ class RecipeViewSet(viewsets.ModelViewSet):
 class UserViewSet(DjoserUserViewSet):
     queryset = User.objects.all()
 
-    def get_queryset(self):
-        return User.objects.all()
+    def get_permissions(self):
+        if self.action in ('update', 'partial_update', 'destroy'):
+            return (IsAuthenticated(),)
+        return super().get_permissions()
 
-    @action(detail=False, methods=['get', 'put', 'patch'])
+    @action(
+        detail=False,
+        methods=['get', 'put', 'patch'],
+        permission_classes=(IsAuthenticated,)
+    )
     def me(self, request, *args, **kwargs):
-        if not request.user.is_authenticated:
-            raise NotAuthenticated()
         return super().me(request, *args, **kwargs)
 
-    @action(detail=True, methods=['post', 'delete'])
+    @action(
+        detail=True,
+        methods=['post', 'delete'],
+        permission_classes=(IsAuthenticated,)
+    )
     def subscribe(self, request, **kwargs):
-        if not request.user.is_authenticated:
-            raise NotAuthenticated()
-
         pk = kwargs.get('id')
         following_user = get_object_or_404(User, pk=pk)
+        is_subscription_exists = Follow.objects.filter(
+            user=request.user,
+            following=following_user
+        ).exists()
 
         if request.method == 'POST':
             if request.user == following_user:
-                return Response(status=status.HTTP_400_BAD_REQUEST)
+                raise BadRequestError('Нельзя подписаться на самого себя.')
 
-            if Follow.objects.filter(
-                    user=request.user,
-                    following=following_user
-            ).exists():
-                return Response(status=status.HTTP_400_BAD_REQUEST)
+            if is_subscription_exists:
+                raise BadRequestError(
+                    'Вы уже подписаны на этого пользователя.'
+                )
             Follow.objects.create(user=request.user, following=following_user)
             return Response(
                 UserWithRecipesSerializer(
@@ -208,21 +222,22 @@ class UserViewSet(DjoserUserViewSet):
                 status=status.HTTP_201_CREATED
             )
         elif request.method == 'DELETE':
-            if not Follow.objects.filter(
-                    user=request.user,
-                    following=following_user
-            ).exists():
-                return Response(status=status.HTTP_400_BAD_REQUEST)
+            if not is_subscription_exists:
+                raise BadRequestError(
+                    'Вы не были подписаны на этого пользователя.'
+                )
             Follow.objects.filter(
                 user=request.user,
                 following=following_user
             ).delete()
             return Response(status=status.HTTP_204_NO_CONTENT)
 
-    @action(detail=False, methods=['get'])
+    @action(
+        detail=False,
+        methods=['get'],
+        permission_classes=(IsAuthenticated,)
+    )
     def subscriptions(self, request, pk=None):
-        if not request.user.is_authenticated:
-            raise NotAuthenticated()
         following_users = User.objects.filter(followers__user=request.user)
 
         page = self.paginate_queryset(following_users)
@@ -243,10 +258,13 @@ class UserViewSet(DjoserUserViewSet):
 
         return Response(serializer.data)
 
-    @action(detail=False, methods=['put', 'delete'], url_path='me/avatar')
+    @action(
+        detail=False,
+        methods=['put', 'delete'],
+        url_path='me/avatar',
+        permission_classes=(IsAuthenticated,)
+    )
     def avatar(self, request):
-        if not request.user.is_authenticated:
-            raise NotAuthenticated()
         if request.method == 'PUT':
             avatar = request.data.get('avatar')
             if avatar is None:
@@ -257,7 +275,9 @@ class UserViewSet(DjoserUserViewSet):
             avatar_file = Base64ImageField().to_internal_value(avatar)
             request.user.avatar = avatar_file
             request.user.save()
-            content = {'avatar': request.build_absolute_uri(request.user.avatar.url)}
+            content = {
+                'avatar': request.build_absolute_uri(request.user.avatar.url)
+            }
             return Response(content, status=status.HTTP_200_OK)
         elif request.method == 'DELETE':
             request.user.avatar.delete(save=False)
