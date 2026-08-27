@@ -1,0 +1,16 @@
+# Виртуальное окружение
+venv/
+.venv/
+env/
+
+# Git
+.git
+.gitignore
+
+# Переменные окружения
+.env
+.env.example
+
+# IDE
+.vscode/
+.idea/
