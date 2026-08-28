@@ -8,28 +8,16 @@ from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
-from recipes.models import (
-    Favorite,
-    Follow,
-    Ingredient,
-    IngredientRecipe,
-    Recipe,
-    ShoppingList,
-    Tag,
-    User
-)
+from recipes.models import (Favorite, Follow, Ingredient, IngredientRecipe,
+                            Recipe, ShoppingList, Tag, User)
+
 from .exceptions import BadRequestError
 from .filters import IngredientSearchFilter, RecipeFilter
 from .permissions import IsAuthorAdminOrReadOnly
-from .serializers import (
-    Base64ImageField,
-    IngredientSerializer,
-    RecipeReadSerializer,
-    RecipeShortSerializer,
-    RecipeWriteSerializer,
-    TagSerializer,
-    UserWithRecipesSerializer
-)
+from .serializers import (Base64ImageField, IngredientSerializer,
+                          RecipeReadSerializer, RecipeShortSerializer,
+                          RecipeWriteSerializer, TagSerializer,
+                          UserWithRecipesSerializer)
 
 
 class TagViewSet(viewsets.ReadOnlyModelViewSet):
