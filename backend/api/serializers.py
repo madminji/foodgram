@@ -3,7 +3,8 @@ import base64
 from django.conf import settings
 from django.core.files.base import ContentFile
 from djoser.serializers import (
-    UserCreateSerializer as DjoserUserCreateSerializer)
+    UserCreateSerializer as DjoserUserCreateSerializer,
+)
 from rest_framework import serializers
 
 from recipes.models import (
