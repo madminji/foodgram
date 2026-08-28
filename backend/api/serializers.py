@@ -2,15 +2,27 @@ import base64
 
 from django.conf import settings
 from django.core.files.base import ContentFile
-from djoser.serializers import \
-    UserCreateSerializer as DjoserUserCreateSerializer
+from djoser.serializers import (
+    UserCreateSerializer as DjoserUserCreateSerializer)
 from rest_framework import serializers
 
-from recipes.models import (Favorite, Follow, Ingredient, IngredientRecipe,
-                            Recipe, ShoppingList, Tag, User)
+from recipes.models import (
+    Favorite,
+    Follow,
+    Ingredient,
+    IngredientRecipe,
+    Recipe,
+    ShoppingList,
+    Tag,
+    User,
+)
 
-from .validators import (USERNAME_REGEX, validate_unique_ingredients,
-                         validate_unique_tags, validate_username_not_me)
+from .validators import (
+    USERNAME_REGEX,
+    validate_unique_ingredients,
+    validate_unique_tags,
+    validate_username_not_me,
+)
 
 
 class Base64ImageField(serializers.ImageField):
