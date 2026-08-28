@@ -14,6 +14,11 @@ ALLOWED_HOSTS = os.getenv('ALLOWED_HOSTS', '127.0.0.1,localhost').split(',')
 
 AUTH_USER_MODEL = 'recipes.User'
 
+CSRF_TRUSTED_ORIGINS = os.getenv(
+    'CSRF_TRUSTED_ORIGINS',
+    'https://foodgram-study.myftp.biz'
+).split(',')
+
 # Application definition
 
 INSTALLED_APPS = [
