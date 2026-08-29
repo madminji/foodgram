@@ -1,6 +1,6 @@
 from django.db.models import Sum
 from django.http import HttpResponse
-from django.shortcuts import get_object_or_404
+from django.shortcuts import get_object_or_404, redirect
 from django_filters.rest_framework import DjangoFilterBackend
 from djoser.views import UserViewSet as DjoserUserViewSet
 from rest_framework import status, viewsets
@@ -31,6 +31,18 @@ from .serializers import (
     TagSerializer,
     UserWithRecipesSerializer,
 )
+from .utils import encode_base62, decode_base62
+
+
+def short_link_redirect(request, short_code):
+    recipe_id = decode_base62(short_code)
+
+    recipe = get_object_or_404(
+        Recipe,
+        pk=recipe_id
+    )
+
+    return redirect(f'/recipes/{recipe.id}/')
 
 
 class TagViewSet(viewsets.ReadOnlyModelViewSet):
@@ -171,7 +183,7 @@ class RecipeViewSet(viewsets.ModelViewSet):
         recipe = get_object_or_404(Recipe, pk=pk)
         return Response({
             'short-link': request.build_absolute_uri(
-                f'/s/{recipe.short_link}/'
+                f'/s/{encode_base62(recipe.id)}/'
             )
         }
         )
