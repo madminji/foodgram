@@ -6,11 +6,11 @@ const Technologies = () => {
   
   return <Main>
     <MetaTags>
-      <title>О проекте</title>
+      <title>Технологии</title>
       <meta name="description" content="Фудграм - Технологии" />
-      <meta property="og:title" content="О проекте" />
+      <meta property="og:title" content="Технологии" />
     </MetaTags>
-    
+
     <Container>
       <h1 className={styles.title}>Технологии</h1>
       <div className={styles.content}>
@@ -30,11 +30,26 @@ const Technologies = () => {
               <li className={styles.textItem}>
                 Djoser
               </li>
+              <li className={styles.textItem}>
+                PostgreSQL
+              </li>
+              <li className={styles.textItem}>
+                Nginx
+              </li>
+              <li className={styles.textItem}>
+                Docker
+              </li>
+              <li className={styles.textItem}>
+                GitHub Actions (CI/CD)
+              </li>
+              <li className={styles.textItem}>
+                Gunicorn
+              </li>
             </ul>
           </div>
         </div>
       </div>
-      
+
     </Container>
   </Main>
 }
