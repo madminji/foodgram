@@ -51,7 +51,7 @@ docker compose up --build
 4. Применить миграции, собрать статику и создать суперпользователя:
 ```bash
 docker compose exec backend python manage.py migrate
-docker compose exec backend python manage.py collectstatic --no-input
+docker compose exec backend python manage.py manage.py collectstatic
 docker compose exec backend cp -r /app/collected_static/. /backend_static/static/
 docker compose exec backend python manage.py createsuperuser
 ```
