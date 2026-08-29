@@ -11,7 +11,7 @@ urlpatterns = [
     path('s/<str:short_code>/',
          short_link_redirect,
          name='short-link'
-    ),
+         ),
 ]
 
 urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)

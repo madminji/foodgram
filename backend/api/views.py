@@ -31,7 +31,7 @@ from .serializers import (
     TagSerializer,
     UserWithRecipesSerializer,
 )
-from .utils import encode_base62, decode_base62
+from .utils import decode_base62, encode_base62
 
 
 def short_link_redirect(request, short_code):
