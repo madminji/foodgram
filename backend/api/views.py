@@ -42,7 +42,7 @@ def short_link_redirect(request, short_code):
         pk=recipe_id
     )
 
-    return redirect(f'/recipes/{recipe.id}/')
+    return redirect(f'/recipes/{recipe.id}')
 
 
 class TagViewSet(viewsets.ReadOnlyModelViewSet):
