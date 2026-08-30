@@ -69,6 +69,9 @@ class RecipeViewSet(viewsets.ModelViewSet):
             return RecipeWriteSerializer
         return RecipeReadSerializer
 
+    def perform_create(self, serializer):
+        serializer.save(author=self.request.user)
+
     def _handle_recipe_relation(
             self,
             request,
