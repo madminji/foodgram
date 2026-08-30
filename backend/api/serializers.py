@@ -133,6 +133,10 @@ class UserWithRecipesSerializer(UserSerializer):
 class AvatarSerializer(serializers.ModelSerializer):
     avatar = Base64ImageField(required=True)
 
+    class Meta:
+        model = User
+        fields = ('avatar',)
+
 
 class RecipeReadSerializer(serializers.ModelSerializer):
     tags = TagSerializer(many=True, read_only=True)
