@@ -1,7 +1,4 @@
-import base64
-
 from django.conf import settings
-from django.core.files.base import ContentFile
 from djoser.serializers import (
     UserCreateSerializer as DjoserUserCreateSerializer,
 )
@@ -17,22 +14,13 @@ from recipes.models import (
     Tag,
     User,
 )
-
+from .fields import Base64ImageField
 from .validators import (
     USERNAME_REGEX,
     validate_unique_ingredients,
     validate_unique_tags,
     validate_username_not_me,
 )
-
-
-class Base64ImageField(serializers.ImageField):
-    def to_internal_value(self, data):
-        if isinstance(data, str) and data.startswith('data:image'):
-            format, imgstr = data.split(';base64,')
-            ext = format.split('/')[-1]
-            data = ContentFile(base64.b64decode(imgstr), name='temp.' + ext)
-        return super().to_internal_value(data)
 
 
 class TagSerializer(serializers.ModelSerializer):
@@ -142,6 +130,10 @@ class UserWithRecipesSerializer(UserSerializer):
         return Recipe.objects.filter(author=obj).count()
 
 
+class AvatarSerializer(serializers.ModelSerializer):
+    avatar = Base64ImageField(required=True)
+
+
 class RecipeReadSerializer(serializers.ModelSerializer):
     tags = TagSerializer(many=True, read_only=True)
     author = UserSerializer(read_only=True)
@@ -168,17 +160,17 @@ class RecipeReadSerializer(serializers.ModelSerializer):
             'cooking_time'
         )
 
-    def get_is_favorited(self, obj):
+    def _check_relation_exists(self, obj, model):
         user = self.context['request'].user
         if not user.is_authenticated:
             return False
-        return Favorite.objects.filter(recipe=obj, user=user).exists()
+        return model.objects.filter(recipe=obj, user=user).exists()
+
+    def get_is_favorited(self, obj):
+        return self._check_relation_exists(obj=obj, model=Favorite)
 
     def get_is_in_shopping_cart(self, obj):
-        user = self.context['request'].user
-        if not user.is_authenticated:
-            return False
-        return ShoppingList.objects.filter(recipe=obj, user=user).exists()
+        return self._check_relation_exists(obj=obj, model=ShoppingList)
 
 
 class RecipeWriteSerializer(serializers.ModelSerializer):
@@ -207,12 +199,12 @@ class RecipeWriteSerializer(serializers.ModelSerializer):
 
     def validate(self, data):
         if self.instance:
-            if 'ingredients' not in self.initial_data:
+            if 'ingredients' not in data:
                 raise serializers.ValidationError({
                     'ingredients': 'Это поле обязательно.'
                 })
 
-            if 'tags' not in self.initial_data:
+            if 'tags' not in data:
                 raise serializers.ValidationError({
                     'tags': 'Это поле обязательно.'
                 })
@@ -225,40 +217,32 @@ class RecipeWriteSerializer(serializers.ModelSerializer):
 
         return data
 
+    def _create_ingredients(self, recipe, ingredients):
+        ingredient_recipe_list = [
+            IngredientRecipe(
+                recipe=recipe,
+                ingredient=ingredient['id'],
+                amount=ingredient['amount'])
+            for ingredient in ingredients
+        ]
+        IngredientRecipe.objects.bulk_create(ingredient_recipe_list)
+
     def create(self, validated_data):
         ingredients = validated_data.pop('ingredients')
         tags = validated_data.pop('tags')
         recipe = Recipe.objects.create(**validated_data)
         recipe.tags.set(tags)
-        for ingredient in ingredients:
-            IngredientRecipe.objects.create(
-                recipe=recipe,
-                ingredient=ingredient['id'],
-                amount=ingredient['amount']
-            )
+        self._create_ingredients(recipe=recipe, ingredients=ingredients)
         return recipe
 
     def update(self, instance, validated_data):
         ingredients = validated_data.pop('ingredients', [])
         tags = validated_data.pop('tags', [])
 
-        instance.name = validated_data.get('name', instance.name)
-        instance.image = validated_data.get('image', instance.image)
-        instance.text = validated_data.get('text', instance.text)
-        instance.cooking_time = validated_data.get(
-            'cooking_time',
-            instance.cooking_time
-        )
+        instance = super().update(instance, validated_data)
 
         instance.tags.set(tags)
-
         instance.ingredientrecipe_set.all().delete()
-        for ingredient in ingredients:
-            IngredientRecipe.objects.create(
-                recipe=instance,
-                ingredient=ingredient['id'],
-                amount=ingredient['amount']
-            )
+        self._create_ingredients(recipe=instance, ingredients=ingredients)
 
-        instance.save()
         return instance

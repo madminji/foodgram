@@ -18,12 +18,11 @@ from recipes.models import (
     Tag,
     User,
 )
-
 from .exceptions import BadRequestError
 from .filters import IngredientSearchFilter, RecipeFilter
 from .permissions import IsAuthorAdminOrReadOnly
 from .serializers import (
-    Base64ImageField,
+    AvatarSerializer,
     IngredientSerializer,
     RecipeReadSerializer,
     RecipeShortSerializer,
@@ -70,29 +69,35 @@ class RecipeViewSet(viewsets.ModelViewSet):
             return RecipeWriteSerializer
         return RecipeReadSerializer
 
-    def create(self, request, *args, **kwargs):
-        serializer = self.get_serializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-        recipe = serializer.save(author=request.user)
-        return Response(
-            RecipeReadSerializer(recipe, context={'request': request}).data,
-            status=status.HTTP_201_CREATED
-        )
+    def _handle_recipe_relation(
+            self,
+            request,
+            model,
+            already_exists_msg,
+            not_found_msg,
+            pk=None
+    ):
+        recipe = get_object_or_404(Recipe, pk=pk)
+        is_relation_exists = model.objects.filter(
+            user=request.user,
+            recipe=recipe
+        ).exists()
 
-    def update(self, request, *args, **kwargs):
-        partial = kwargs.pop('partial', False)
-        instance = self.get_object()
-        serializer = self.get_serializer(
-            instance,
-            data=request.data,
-            partial=partial
-        )
-        serializer.is_valid(raise_exception=True)
-        recipe = serializer.save()
-        return Response(
-            RecipeReadSerializer(recipe, context={'request': request}).data,
-            status=status.HTTP_200_OK
-        )
+        if request.method == 'POST':
+            if is_relation_exists:
+                raise BadRequestError(already_exists_msg)
+            model.objects.create(user=request.user, recipe=recipe)
+            return Response(
+                RecipeShortSerializer(recipe).data,
+                status=status.HTTP_201_CREATED
+            )
+
+        if not is_relation_exists:
+            raise BadRequestError(not_found_msg)
+
+        model.objects.filter(user=request.user, recipe=recipe).delete()
+
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
     @action(
         detail=True,
@@ -100,25 +105,13 @@ class RecipeViewSet(viewsets.ModelViewSet):
         permission_classes=(IsAuthenticated,)
     )
     def favorite(self, request, pk=None):
-        recipe = get_object_or_404(Recipe, pk=pk)
-        is_favorite_exists = Favorite.objects.filter(
-            user=request.user,
-            recipe=recipe
-        ).exists()
-
-        if request.method == 'POST':
-            if is_favorite_exists:
-                raise BadRequestError('Рецепт уже добавлен в избранное.')
-            Favorite.objects.create(user=request.user, recipe=recipe)
-            return Response(
-                RecipeShortSerializer(recipe).data,
-                status=status.HTTP_201_CREATED
-            )
-        elif request.method == 'DELETE':
-            if not is_favorite_exists:
-                raise BadRequestError('Рецепта нет в избранном.')
-            Favorite.objects.filter(user=request.user, recipe=recipe).delete()
-            return Response(status=status.HTTP_204_NO_CONTENT)
+        return self._handle_recipe_relation(
+            request=request,
+            model=Favorite,
+            already_exists_msg='Рецепт уже добавлен в избранное.',
+            not_found_msg='Рецепта нет в избранном.',
+            pk=pk
+        )
 
     @action(
         detail=True,
@@ -126,28 +119,13 @@ class RecipeViewSet(viewsets.ModelViewSet):
         permission_classes=(IsAuthenticated,)
     )
     def shopping_cart(self, request, pk=None):
-        recipe = get_object_or_404(Recipe, pk=pk)
-        is_shopping_cart_exists = ShoppingList.objects.filter(
-            user=request.user,
-            recipe=recipe
-        ).exists()
-
-        if request.method == 'POST':
-            if is_shopping_cart_exists:
-                raise BadRequestError('Рецепт уже добавлен в список покупок.')
-            ShoppingList.objects.create(user=request.user, recipe=recipe)
-            return Response(
-                RecipeShortSerializer(recipe).data,
-                status=status.HTTP_201_CREATED
-            )
-        elif request.method == 'DELETE':
-            if not is_shopping_cart_exists:
-                raise BadRequestError('Рецепта нет в списке покупок.')
-            ShoppingList.objects.filter(
-                user=request.user,
-                recipe=recipe
-            ).delete()
-            return Response(status=status.HTTP_204_NO_CONTENT)
+        return self._handle_recipe_relation(
+            request=request,
+            model=ShoppingList,
+            already_exists_msg='Рецепт уже добавлен в список покупок.',
+            not_found_msg='Рецепта нет в списке покупок.',
+            pk=pk,
+        )
 
     @action(
         detail=False,
@@ -185,8 +163,7 @@ class RecipeViewSet(viewsets.ModelViewSet):
             'short-link': request.build_absolute_uri(
                 f'/s/{encode_base62(recipe.id)}/'
             )
-        }
-        )
+        })
 
 
 class UserViewSet(DjoserUserViewSet):
@@ -234,16 +211,18 @@ class UserViewSet(DjoserUserViewSet):
                 ).data,
                 status=status.HTTP_201_CREATED
             )
-        elif request.method == 'DELETE':
-            if not is_subscription_exists:
-                raise BadRequestError(
-                    'Вы не были подписаны на этого пользователя.'
-                )
-            Follow.objects.filter(
-                user=request.user,
-                following=following_user
-            ).delete()
-            return Response(status=status.HTTP_204_NO_CONTENT)
+
+        if not is_subscription_exists:
+            raise BadRequestError(
+                'Вы не были подписаны на этого пользователя.'
+            )
+
+        Follow.objects.filter(
+            user=request.user,
+            following=following_user
+        ).delete()
+
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
     @action(
         detail=False,
@@ -279,21 +258,18 @@ class UserViewSet(DjoserUserViewSet):
     )
     def avatar(self, request):
         if request.method == 'PUT':
-            avatar = request.data.get('avatar')
-            if avatar is None:
-                return Response(
-                    {'avatar': ['Это поле обязательно.']},
-                    status=status.HTTP_400_BAD_REQUEST
-                )
-            avatar_file = Base64ImageField().to_internal_value(avatar)
-            request.user.avatar = avatar_file
+            serializer = AvatarSerializer(data=request.data)
+            serializer.is_valid(raise_exception=True)
+
+            request.user.avatar = serializer.validated_data['avatar']
             request.user.save()
+
             content = {
                 'avatar': request.build_absolute_uri(request.user.avatar.url)
             }
             return Response(content, status=status.HTTP_200_OK)
-        elif request.method == 'DELETE':
-            request.user.avatar.delete(save=False)
-            request.user.avatar = None
-            request.user.save()
-            return Response(status=status.HTTP_204_NO_CONTENT)
+
+        request.user.avatar.delete(save=False)
+        request.user.avatar = None
+        request.user.save()
+        return Response(status=status.HTTP_204_NO_CONTENT)
