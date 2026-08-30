@@ -221,6 +221,11 @@ class RecipeWriteSerializer(serializers.ModelSerializer):
 
         return data
 
+    def to_representation(self, instance):
+        return RecipeReadSerializer(
+            instance, context=self.context
+        ).data
+
     def _create_ingredients(self, recipe, ingredients):
         ingredient_recipe_list = [
             IngredientRecipe(
